@@ -4,6 +4,8 @@ import sys
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 from models.llm import get_chatgroq_model
+from models.embeddings import get_embedding_model
+from utils.rag import extract_text_from_pdf, chunk_text
 
 @st.cache_resource
 def load_llm_model():
@@ -11,6 +13,14 @@ def load_llm_model():
         return get_chatgroq_model()
     except Exception as e:
         st.error(f"Error loading LLM model: {str(e)}")
+        return None
+    
+@st.cache_resource
+def load_embedding_model():
+    try:
+        return get_embedding_model()
+    except Exception as e:
+        st.error(f"Embedding model init failed: {e}")
         return None
 
 
@@ -124,7 +134,7 @@ def chat_page():
     
     
     # Determine which provider to use based on available API keys
-    chat_model = get_chatgroq_model()
+    chat_model = load_llm_model()
     
     # Initialize chat history
     if "messages" not in st.session_state:
@@ -182,6 +192,21 @@ def main():
             if st.button("🗑️ Clear Chat History", use_container_width=True):
                 st.session_state.messages = []
                 st.rerun()
+
+            st.subheader("+ Add Docs")
+            uploaded_file = st.file_uploader(
+                "Upload a PDF (news article, report, guidelines...)",
+                type=["pdf"],
+            )
+
+            if uploaded_file:
+                with st.spinner("Processing PDF..."):
+                    try:
+                        text = extract_text_from_pdf(uploaded_file)
+                        chunks = chunk_text(text)
+                        st.success(f"PDF processed successfully! Extracted {len(chunks)} chunks of text.")
+                    except Exception as e:
+                        st.error(f"Failed to process PDF: {e}")
     
     # Route to appropriate page
     if page == "Instructions":
