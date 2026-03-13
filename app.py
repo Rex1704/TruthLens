@@ -221,6 +221,8 @@ def chat_page(llm, embedding_model, search_client):
             )
         else:
             st.warning(f"Could not fetch tweet: {result['error']}")
+    else:
+        st.markdown(""" """)
 
     with st.expander("Attach a reference document", expanded=False):
         st.caption("Upload a PDF relevant to this specific claim - e.g. a report, news article, or research paper.")
