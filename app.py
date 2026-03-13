@@ -3,7 +3,7 @@ import os
 import sys
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
-from models.llm import get_chatgroq_model
+from models.llm import get_chatgroq_model, build_system_prompt
 from models.embeddings import get_embedding_model
 from utils.rag import process_uploaded_pdf, get_rag_context
 
@@ -24,11 +24,12 @@ def load_embedding_model():
         return None
 
 
-def get_chat_response(chat_model, claim: str, context: str) -> str:
+def get_chat_response(chat_model, claim: str, context: str, response_mode: str) -> str:
     try:
-        # system_prompt = build_system_prompt(response_mode)
+        system_prompt = build_system_prompt(response_mode)
 
         formatted_messages = [
+            SystemMessage(content=system_prompt),
             HumanMessage(
                 content=(
                     f"Please fact-check the following claim:\n\n"
@@ -170,6 +171,8 @@ def chat_page(llm, embedding_model):
             )
 
         else:
+            response_mode = st.session_state.get("response_mode", "detailed")
+
             with st.spinner("Investigating claim..."):
 
                 context_parts = []
@@ -188,16 +191,16 @@ def chat_page(llm, embedding_model):
 
                 # 3. Combine context and get verdict
                 full_context = "\n\n".join(context_parts)
-                verdict = get_chat_response(llm, claim_input, full_context)
+                verdict = get_chat_response(llm, claim_input, full_context, response_mode)
 
             st.markdown("---")
             st.subheader("Fact-Check Result")
 
-            if "✅" in verdict or "TRUE" in verdict.upper():
+            if "TRUE" in verdict.upper():
                 st.success(verdict)
-            elif "❌" in verdict or "FALSE" in verdict.upper():
+            elif "FALSE" in verdict.upper():
                 st.error(verdict)
-            elif "⚠️" in verdict or "MISLEADING" in verdict.upper():
+            elif "MISLEADING" in verdict.upper():
                 st.warning(verdict)
             else:
                 st.info(verdict)
@@ -237,9 +240,21 @@ def main():
         # Add clear chat button in sidebar for chat page
         if page == "Chat":
             st.divider()
-            if st.button("🗑️ Clear Chat History", use_container_width=True):
-                st.session_state.messages = []
-                st.rerun()
+
+            st.subheader("Response Mode")
+            response_mode = st.radio(
+                label="Select mode:",
+                options=["concise", "detailed"],
+                format_func=lambda x: "Concise" if x == "concise" else "Detailed",
+                index=1,
+            )
+            st.session_state["response_mode"] = response_mode
+            st.caption(
+                "**Concise** - Verdict + one-line reason\n\n"
+                "**Detailed** - Full analysis + evidence breakdown"
+            )
+
+            st.divider()
 
             st.subheader("+ Add Docs")
             uploaded_file = st.file_uploader(
@@ -254,6 +269,13 @@ def main():
                         st.success(f"'{uploaded_file.name}' loaded ({len(st.session_state.rag_store['chunks'])} chunks)")
                     except Exception as e:
                         st.error(f"Failed to process PDF: {e}")
+
+            st.divider()
+            if st.button("🗑️ Clear Chat History", use_container_width=True):
+                st.session_state.messages = []
+                st.rerun()
+
+            
     
     # Route to appropriate page
     if page == "Instructions":
