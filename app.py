@@ -5,7 +5,7 @@ from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 from models.llm import get_chatgroq_model
 from models.embeddings import get_embedding_model
-from utils.rag import extract_text_from_pdf, chunk_text
+from utils.rag import process_uploaded_pdf, get_rag_context
 
 @st.cache_resource
 def load_llm_model():
@@ -24,23 +24,24 @@ def load_embedding_model():
         return None
 
 
-def get_chat_response(chat_model, messages, system_prompt):
-    """Get response from the chat model"""
+def get_chat_response(chat_model, claim: str, context: str) -> str:
     try:
-        # Prepare messages for the model
-        formatted_messages = [SystemMessage(content=system_prompt)]
-        
-        # Add conversation history
-        for msg in messages:
-            if msg["role"] == "user":
-                formatted_messages.append(HumanMessage(content=msg["content"]))
-            else:
-                formatted_messages.append(AIMessage(content=msg["content"]))
-        
-        # Get response from model
+        # system_prompt = build_system_prompt(response_mode)
+
+        formatted_messages = [
+            HumanMessage(
+                content=(
+                    f"Please fact-check the following claim:\n\n"
+                    f"CLAIM: {claim}\n\n"
+                    f"CONTEXT FROM SOURCES:\n"
+                    f"{context if context else 'No additional context available. Use your general knowledge.'}"
+                )
+            ),
+        ]
+
         response = chat_model.invoke(formatted_messages)
         return response.content
-    
+
     except Exception as e:
         return f"Error getting response: {str(e)}"
 
@@ -124,7 +125,10 @@ def instructions_page():
     Ready to start chatting? Navigate to the **Chat** page using the sidebar! 
     """)
 
-def chat_page():
+
+
+
+def chat_page(llm, embedding_model):
     """Main chat interface page"""
     st.title("🤖 AI ChatBot")
     
@@ -132,44 +136,88 @@ def chat_page():
     # Default system prompt
     system_prompt = ""
     
+    if "claim_input" not in st.session_state:
+        st.session_state["claim_input"] = ""
     
-    # Determine which provider to use based on available API keys
-    chat_model = load_llm_model()
+    # # Determine which provider to use based on available API keys
+    # chat_model = llm
     
-    # Initialize chat history
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
+    claim_input = st.text_area(
+        label="Enter a claim to fact-check:",
+        placeholder="e.g. Vaccines cause autism.",
+        height=100,
+        key="claim_input",
+    )
+
     
-    # Display chat messages
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            st.markdown(message["content"])
+    use_rag = st.toggle("Use Uploaded Documents", value=True)
+
+    check_btn = st.button("Fact Check", type="primary", use_container_width=True)
     
     # Chat input
-    # bug -- if chat_model was commented out hence even if the api keys were present it would show 
+    # bug -- 'if chat_model:' statement was commented out hence even if the api keys were present it would show 
     # no api keys found until user enter the prompt.
     # if chat_model:
-    if chat_model:
-        if prompt := st.chat_input("Type your message here..."):
-            # Add user message to chat history
-            st.session_state.messages.append({"role": "user", "content": prompt})
-            
-            # Display user message
-            with st.chat_message("user"):
-                st.markdown(prompt)
-            
-            # Generate and display bot response
-            with st.chat_message("assistant"):
-                with st.spinner("Getting response..."):
-                    response = get_chat_response(chat_model, st.session_state.messages, system_prompt)
-                    st.markdown(response)
-            
-            # Add bot response to chat history
-            st.session_state.messages.append({"role": "assistant", "content": response})
-    else:
-        st.info("🔧 No API keys found in environment variables. Please check the Instructions page to set up your API keys.")
+    if check_btn:
+        st.markdown(f"**Investigating Claim:** {claim_input}")
+        if claim_input is None or claim_input.strip() == "":
+            st.warning("Please enter a claim to fact-check.")
+
+        elif not llm:
+            st.info(
+                "🔧 No API keys found in environment variables. "
+                "Please check the Instructions page to set up your API keys."
+            )
+
+        else:
+            with st.spinner("Investigating claim..."):
+
+                context_parts = []
+
+                # 1. RAG context from uploaded PDF
+                if use_rag and st.session_state.rag_store:
+                    with st.status("Searching uploaded documents...", expanded=False):
+                        try:
+                            rag_ctx = get_rag_context(
+                                claim_input, st.session_state.rag_store, embedding_model
+                            )
+                            context_parts.append("=== FROM UPLOADED DOCUMENTS ===\n" + rag_ctx)
+                        except Exception as e:
+                            st.warning(f"RAG search failed: {e}")
+                        st.write("Done.")
+
+                # 3. Combine context and get verdict
+                full_context = "\n\n".join(context_parts)
+                verdict = get_chat_response(llm, claim_input, full_context)
+
+            st.markdown("---")
+            st.subheader("Fact-Check Result")
+
+            if "✅" in verdict or "TRUE" in verdict.upper():
+                st.success(verdict)
+            elif "❌" in verdict or "FALSE" in verdict.upper():
+                st.error(verdict)
+            elif "⚠️" in verdict or "MISLEADING" in verdict.upper():
+                st.warning(verdict)
+            else:
+                st.info(verdict)
+
+            # Save to claim history
+            st.session_state.history.append({
+                "claim": claim_input,
+                "verdict": verdict,
+            })
 
 def main():
+    embedding_model = load_embedding_model()
+    llm = load_llm_model()
+
+    if "rag_store" not in st.session_state:
+        st.session_state.rag_store = None
+
+    if "history" not in st.session_state:
+        st.session_state.history = []
+    
     st.set_page_config(
         page_title="LangChain Multi-Provider ChatBot",
         page_icon="🤖",
@@ -202,9 +250,8 @@ def main():
             if uploaded_file:
                 with st.spinner("Processing PDF..."):
                     try:
-                        text = extract_text_from_pdf(uploaded_file)
-                        chunks = chunk_text(text)
-                        st.success(f"PDF processed successfully! Extracted {len(chunks)} chunks of text.")
+                        st.session_state.rag_store = process_uploaded_pdf(uploaded_file, embedding_model)
+                        st.success(f"'{uploaded_file.name}' loaded ({len(st.session_state.rag_store['chunks'])} chunks)")
                     except Exception as e:
                         st.error(f"Failed to process PDF: {e}")
     
@@ -212,7 +259,7 @@ def main():
     if page == "Instructions":
         instructions_page()
     if page == "Chat":
-        chat_page()
+        chat_page(llm, embedding_model)
 
 if __name__ == "__main__":
     main()
