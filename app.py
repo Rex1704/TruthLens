@@ -6,6 +6,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../.
 from models.llm import get_chatgroq_model, build_system_prompt
 from models.embeddings import get_embedding_model
 from utils.rag import process_uploaded_pdf, get_rag_context
+from utils.search import get_search_client, get_web_context
 
 @st.cache_resource
 def load_llm_model():
@@ -21,6 +22,14 @@ def load_embedding_model():
         return get_embedding_model()
     except Exception as e:
         st.error(f"Embedding model init failed: {e}")
+        return None
+    
+@st.cache_resource
+def load_search_client():
+    try:
+        return get_search_client()
+    except Exception as e:
+        st.warning(f"Web search unavailable: {e}")
         return None
 
 
@@ -129,13 +138,13 @@ def instructions_page():
 
 
 
-def chat_page(llm, embedding_model):
+def chat_page(llm, embedding_model, search_client):
     """Main chat interface page"""
     st.title("🤖 AI ChatBot")
     
     # Get configuration from environment variables or session state
     # Default system prompt
-    system_prompt = ""
+    # system_prompt = ""
     
     if "claim_input" not in st.session_state:
         st.session_state["claim_input"] = ""
@@ -151,7 +160,11 @@ def chat_page(llm, embedding_model):
     )
 
     
-    use_rag = st.toggle("Use Uploaded Documents", value=True)
+    col1, col2 = st.columns(2)
+    with col1:
+        use_web_search = st.toggle("Use Live Web Search", value=False)
+    with col2:
+        use_rag = st.toggle("Use Uploaded Documents", value=True)
 
     check_btn = st.button("Fact Check", type="primary", use_container_width=True)
     
@@ -188,6 +201,15 @@ def chat_page(llm, embedding_model):
                         except Exception as e:
                             st.warning(f"RAG search failed: {e}")
                         st.write("Done.")
+                
+                if use_web_search and search_client:
+                    with st.status("Searching the web...", expanded=False):
+                        try:
+                            web_ctx = get_web_context(search_client, claim_input)
+                            context_parts.append("=== FROM WEB SOURCES ===\n" + web_ctx)
+                        except Exception as e:
+                            st.warning(f"Web search failed: {e}")
+                        st.write("Done.")
 
                 # 3. Combine context and get verdict
                 full_context = "\n\n".join(context_parts)
@@ -209,11 +231,13 @@ def chat_page(llm, embedding_model):
             st.session_state.history.append({
                 "claim": claim_input,
                 "verdict": verdict,
+                "mode": response_mode,
             })
 
 def main():
     embedding_model = load_embedding_model()
     llm = load_llm_model()
+    search_client = load_search_client()
 
     if "rag_store" not in st.session_state:
         st.session_state.rag_store = None
@@ -281,7 +305,7 @@ def main():
     if page == "Instructions":
         instructions_page()
     if page == "Chat":
-        chat_page(llm, embedding_model)
+        chat_page(llm, embedding_model, search_client)
 
 if __name__ == "__main__":
     main()
