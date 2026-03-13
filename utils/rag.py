@@ -63,12 +63,14 @@ def process_uploaded_pdf(uploaded_file, embedding_model) -> dict:
     except Exception as e:
         raise RuntimeError(f"PDF processing pipeline failed: {e}")
 
-def get_rag_context(query: str, rag_store: dict, embedding_model) -> str:
+def get_rag_context(query: str, rag_store: list[dict], embedding_model) -> str:
     try:
         query_emb = embedding_fn(embedding_model, [query])[0]
-        relevant_chunks = retrieve_relevant_chunks(
-            query_emb, rag_store["index"], rag_store["chunks"]
-        )
+        relevant_chunks = []
+        for doc in rag_store:
+            relevant_chunks.extend(retrieve_relevant_chunks(
+                query_emb, doc["index"], doc["chunks"]
+            ))
         context = "\n---\n".join(
             [f"[Document {i+1}]:\n{chunk}" for i, chunk in enumerate(relevant_chunks)]
         )

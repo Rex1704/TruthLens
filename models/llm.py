@@ -89,6 +89,6 @@ def is_fact_check_input(claim: str) -> tuple[bool, str]:
     ]
     for phrase in chatbot_phrases:
         if lowered.startswith(phrase) or f" {phrase} " in lowered:
-            return False, "Fact-checker only fact-checks claims and statements. Please enter a claim to verify."
+            return False, "This app only fact-checks claims and statements. Please enter a claim to verify."
  
     return True, ""
