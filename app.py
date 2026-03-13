@@ -161,12 +161,10 @@ def chat_page(llm, embedding_model, search_client):
         cache = st.session_state["tweet_cache"]
  
         if is_tweet_url(value):
-            # Only re-fetch if the URL actually changed
             if cache["url"] != value:
                 result = fetch_tweet_text(value)
                 st.session_state["tweet_cache"] = {"url": value, "result": result}
         else:
-            # Input is no longer a tweet URL — clear cache
             st.session_state["tweet_cache"] = {"url": None, "result": None}
  
 
@@ -198,6 +196,7 @@ def chat_page(llm, embedding_model, search_client):
         if result["success"]:
             tweet_author = result["author"]
             tweet_context = result["text"]
+            claim_input = f"{claim_input}\n\n[TWEET BY @{tweet_author}]: {tweet_context}"
  
             st.markdown(
                 f"""
