@@ -3,7 +3,7 @@ import os
 import sys
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
-from models.llm import get_chatgroq_model, build_system_prompt
+from models.llm import get_chatgroq_model, build_system_prompt, is_fact_check_input
 from models.embeddings import get_embedding_model
 from utils.rag import process_uploaded_pdf, get_rag_context
 from utils.search import get_search_client, get_web_context
@@ -195,6 +195,10 @@ def chat_page(llm, embedding_model, search_client):
             )
 
         else:
+            is_valid, rejection_reason = is_fact_check_input(claim_input)
+            if not is_valid:
+                st.warning(rejection_reason)
+                st.stop()
             response_mode = st.session_state.get("response_mode", "detailed")
 
             with st.spinner("Investigating claim..."):
