@@ -10,7 +10,7 @@ def get_embedding_model():
     
 def embedding_fn(model, text: list[str]) -> list:
     try:
-        embeddings = model.encode(text)
+        embeddings = model.encode(text, convert_to_numpy=True)
         return embeddings
     except Exception as e:
         raise RuntimeError(f"Failed to generate embeddings: {str(e)}")

@@ -140,7 +140,7 @@ def instructions_page():
 
 def chat_page(llm, embedding_model, search_client):
     """Main chat interface page"""
-    st.title("🤖 AI ChatBot")
+    st.title("Fact-Checking Chatbot")
     
     # Get configuration from environment variables or session state
     # Default system prompt
@@ -151,6 +151,17 @@ def chat_page(llm, embedding_model, search_client):
     
     # # Determine which provider to use based on available API keys
     # chat_model = llm
+
+    st.markdown("**Try an example:**")
+    examples = [
+        "The Great Wall of China is visible from space.",
+        "5G towers spread COVID-19.",
+        "Drinking 8 glasses of water a day is scientifically required.",
+    ]
+    cols = st.columns(3)
+    for i, example in enumerate(examples):
+        if cols[i].button(f'"{example[:38]}..."', key=f"ex_{i}"):
+            st.session_state["claim_input"] = example
     
     claim_input = st.text_area(
         label="Enter a claim to fact-check:",
@@ -274,28 +285,42 @@ def main():
             )
             st.session_state["response_mode"] = response_mode
             st.caption(
-                "**Concise** - Verdict + one-line reason\n\n"
+                "**Concise** - Verdict + one-line reason\n"
                 "**Detailed** - Full analysis + evidence breakdown"
             )
 
             st.divider()
 
             st.subheader("+ Add Docs")
-            uploaded_file = st.file_uploader(
+            uploaded_files = st.file_uploader(
                 "Upload a PDF (news article, report, guidelines...)",
                 type=["pdf"],
+                accept_multiple_files=True,
             )
 
-            if uploaded_file:
+            if len(uploaded_files) > 0:
                 with st.spinner("Processing PDF..."):
                     try:
-                        st.session_state.rag_store = process_uploaded_pdf(uploaded_file, embedding_model)
-                        st.success(f"'{uploaded_file.name}' loaded ({len(st.session_state.rag_store['chunks'])} chunks)")
+                        for uploaded_file in uploaded_files:
+                            st.session_state.rag_store = process_uploaded_pdf(uploaded_file, embedding_model)
+                        st.success(f"'{" ".join(u.name for u in uploaded_files)}' saved.")
                     except Exception as e:
                         st.error(f"Failed to process PDF: {e}")
 
             st.divider()
+
+            st.subheader("Claim History")
+            if st.session_state.history:
+                for i, item in enumerate(reversed(st.session_state.history[-10:])):
+                    label = item["claim"][:35] + "..." if len(item["claim"]) > 35 else item["claim"]
+                    with st.expander(label):
+                        st.markdown(f"**Mode:** {item['mode'].capitalize()}")
+                        st.markdown(item["verdict"])
+            else:
+                st.caption("No claims checked yet.")
+
             if st.button("🗑️ Clear Chat History", use_container_width=True):
+                st.session_state.history = []
                 st.session_state.messages = []
                 st.rerun()
 

@@ -40,7 +40,7 @@ def build_faiss_index(embeddings) -> faiss.IndexFlatL2:
         raise RuntimeError(f"Failed to build FAISS index: {e}")
 
 def retrieve_relevant_chunks(
-    query_embedding,
+    query_embedding: np.ndarray,
     index: faiss.IndexFlatL2,
     chunks: list[str],
     top_k: int = TOP_K_RESULTS,
