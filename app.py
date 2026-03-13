@@ -178,6 +178,8 @@ def chat_page(llm, embedding_model, search_client):
     for i, example in enumerate(examples):
         if cols[i].button(f'"{example[:38]}..."', key=f"ex_{i}"):
             st.session_state["claim_input"] = example
+            st.session_state["tweet_cache"] = {"url": None, "result": None}
+
     
     claim_input = st.text_area(
         label="Enter a claim to fact-check:",
