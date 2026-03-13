@@ -3,8 +3,15 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
-TAVILY_API_KEY = os.getenv("TAVILY_API_KEY", "")
+def _get_secret(key: str) -> str:
+    try:
+        import streamlit as st
+        return st.secrets.get(key, os.getenv(key, ""))
+    except Exception:
+        return os.getenv(key, "")
+
+GROQ_API_KEY = _get_secret("GROQ_API_KEY")
+TAVILY_API_KEY = _get_secret("TAVILY_API_KEY")
 TAVILY_MAX_RESULTS = 5
 
 GROQ_MODEL = "llama-3.1-8b-instant"
